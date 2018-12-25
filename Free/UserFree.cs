@@ -1,5 +1,6 @@
 ﻿using System;
 using Optional;
+using static Optional.Option;
 
 namespace Free
 {
@@ -73,20 +74,13 @@ namespace Free
     {
         public static UserFree<Out> Bind<In, Out>(this UserFree<In> m, Func<In, UserFree<Out>> f)
         {
-            if (m is UserFree<In>.Return r)
+            switch (m)
             {
-                return f(r.Value);
+                case UserFree<In>.Return r:      return f(r.Value);
+                case UserFree<In>.CreateUser cu: return new UserFree<Out>.CreateUser(cu.Request, id => cu.Next(id).Bind(f));
+                case UserFree<In>.GetUser gu:    return new UserFree<Out>.GetUser(gu.UserId, u => gu.Next(u).Bind(f));
+                default:                         throw new ArgumentOutOfRangeException(m.GetType().FullName);
             }
-            else if (m is UserFree<In>.CreateUser cu)
-            {
-                return new UserFree<Out>.CreateUser(cu.Request, id => cu.Next(id).Bind(f));
-            }
-            else if (m is UserFree<In>.GetUser gu)
-            {
-                return new UserFree<Out>.GetUser(gu.UserId, u => gu.Next(u).Bind(f));
-            }
-
-            throw new ArgumentOutOfRangeException(m.GetType().FullName);
         }
 
         public static UserFree<B> Select<A, B>(this UserFree<A> ma, Func<A, B> f) =>
@@ -108,48 +102,34 @@ namespace Free
 
     public class Env
     {
-        public Option<int, Error> RunDbCommand(string sql)
-        {
-            return Option.Some(42).WithException(new Error("Failed to create user in database"));
-        }
+        public Option<int, Error> RunDbCommand(string sql) =>
+            Some(42).WithException(new Error("Failed to create user in database"));
 
-        public Option<UserEntity, Error> SelectDatabase(string sql)
-        {
-            return Option.None<UserEntity, Error>(new Error("User not found in database."));
-        }
+        public Option<UserEntity, Error> SelectDatabase(string sql) =>
+            None<UserEntity, Error>(new Error("User not found in database."));
     }
 
     public static class UserFreeInterpreter
     {
         public static Option<(T, Env), Error> Interpret<T>(UserFree<T> m, Env env)
         {
-            if (m is UserFree<T>.Return r)
-                return (r.Value, env).Some<(T, Env), Error>();
-
-            if (m is UserFree<T>.CreateUser cu)
-                return CreateUser(cu, env);
-
-            if (m is UserFree<T>.GetUser gu)
-                return GetUser(gu, env);
-
-            throw new ArgumentOutOfRangeException(m.GetType().FullName);
+            switch (m)
+            {
+                case UserFree<T>.Return r:      return (r.Value, env).Some<(T, Env), Error>();
+                case UserFree<T>.CreateUser cu: return CreateUser(cu, env);
+                case UserFree<T>.GetUser gu:    return GetUser(gu, env);
+                default:                        throw new ArgumentOutOfRangeException(m.GetType().FullName);
+            }
         }
 
-        private static Option<(T, Env), Error> GetUser<T>(UserFree<T>.GetUser gu, Env env)
-        {
-            return env
-                .SelectDatabase($"SELECT * FROM [Users] WHERE ID = {gu.UserId}")
-                .FlatMap(user => Interpret(gu.Next(user), env));
-        }
+        private static Option<(T, Env), Error> GetUser<T>(UserFree<T>.GetUser gu, Env env) =>
+            env.SelectDatabase($"SELECT * FROM [Users] WHERE ID = {gu.UserId}")
+               .FlatMap(user => Interpret(gu.Next(user), env));
 
-        private static Option<(T, Env), Error> CreateUser<T>(UserFree<T>.CreateUser cu, Env env)
-        {
-            CreateUserRequest req = cu.Request;
-            return env
-                .RunDbCommand($"INSERT INTO [Users] ('Name') VALUES ({req.Name});")
-                .Map(id => new UserId(id))
-                .FlatMap(userId => Interpret(cu.Next(userId), env));
-        }
+        private static Option<(T, Env), Error> CreateUser<T>(UserFree<T>.CreateUser cu, Env env) =>
+            env.RunDbCommand($"INSERT INTO [Users] ('Name') VALUES ({cu.Request.Name});")
+               .Map(id => new UserId(id))
+               .FlatMap(userId => Interpret(cu.Next(userId), env));
     }
 
 
