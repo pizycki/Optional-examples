@@ -6,7 +6,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Optional" Version="4.0.0" />
+    <Reference Include="Optional">
+      <HintPath>..\..\..\..\Users\pawelizycki\.nuget\packages\optional\4.0.0\lib\netstandard2.0\Optional.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
 </Project>
